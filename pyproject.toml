@@ -1,71 +1,11 @@
-[tool]
-[tool.poetry]
-name = "pydantic_panel"
-version = "0.2.0"
-homepage = "https://github.com/jmosbacher/pydantic_panel"
-description = "Top-level package for pydantic-panel."
-authors = ["Yossi Mosbacher <joe.mosbacher@gmail.com>"]
-readme = "README.rst"
-license =  "MIT"
-classifiers=[
-    'Development Status :: 2 - Pre-Alpha',
-    'Intended Audience :: Developers',
-    'License :: OSI Approved :: MIT License',
-    'Natural Language :: English',
-    'Programming Language :: Python :: 3.8',
-    'Programming Language :: Python :: 3.9',
-    'Programming Language :: Python :: 3.10',
-
+[project]
+name = "pydantic-panel"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.13"
+dependencies = [
+    "panel>=1.9.3",
+    "plum>=2.9.0",
+    "pydantic>=2.13.4",
+    "pytest>=9.0.3",
 ]
-packages = [
-    { include = "pydantic_panel" },
-    { include = "tests", format = "sdist" },
-]
-
-[tool.poetry.dependencies]
-python = ">=3.8,<4.0"
-panel = ">=0.13"
-pydantic = ">=2.0"
-plum-dispatch = "*"
-
-
-[tool.poetry.dev-dependencies]
-bumpversion = "*"
-coverage = "*"
-flake8 = "*"
-isort = "*"
-pylint = "*"
-pytest = "*"
-sphinx = "^5.0.2"
-tox = "*"
-yapf = "*"
-sphinx-material = "*"
-nbsphinx = "*"
-invoke = "*"
-twine = "^4.0.1"
-black = "^22.6.0"
-pytest-cov = "^3.0.0"
-
-[tool.poetry.plugins."panel.extension"]
-pydantic = 'pydantic_panel'
-
-[build-system]
-requires = ["poetry-core>=1.0.8", "setuptools"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.dephell.main]
-versioning = "semver"
-from = {format = "poetry", path = "pyproject.toml"}
-to = {format = "setuppy", path = "setup.py"}
-
-[tool.poe.tasks]
-test   = "pytest --cov=pydantic_panel"
-format = "black ."
-clean  = """
-    rm -rf .coverage
-        .mypy_cache
-        .pytest_cache
-        dist
-        ./**/__pycache__
-    """
-lint   = "pylint pydantic_panel"

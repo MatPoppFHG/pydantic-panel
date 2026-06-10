@@ -21,6 +21,22 @@ alt_data = dict(
 )
 
 
+class LeafModel(BaseModel):
+    a: int = 1
+    b: int = 2
+
+
+class NestedModel(BaseModel):
+    x: float = 1.0
+    y: float = 2.0
+    leaf: LeafModel = LeafModel()
+
+
+class OuterModel(BaseModel):
+    name: str = "outer"
+    inner: NestedModel = NestedModel()
+
+
 def test_panel_model_class():
     w = pn.panel(SomeModel)
     assert isinstance(w, pydantic_panel.PydanticModelEditor)
@@ -49,3 +65,27 @@ def test_bidirectional():
         setattr(m, k, v)
         assert w._widgets[k].value == v
     assert w.value == m
+
+
+def test_bidirectional_nested_widget_to_model():
+    """Editing a nested widget updates the underlying model in-place."""
+    m = OuterModel()
+    w = pydantic_panel.infer_widget(m, bidirectional=True)
+
+    w._widgets["inner"]._widgets["x"].value = 9.9
+    assert m.inner.x == 9.9
+
+    w._widgets["inner"]._widgets["leaf"]._widgets["a"].value = 42
+    assert m.inner.leaf.a == 42
+
+
+def test_bidirectional_nested_model_to_widget():
+    """Setting a nested model attribute from Python updates the widget."""
+    m = OuterModel()
+    w = pydantic_panel.infer_widget(m, bidirectional=True)
+
+    m.inner.x = 7.77
+    assert w._widgets["inner"]._widgets["x"].value == 7.77
+
+    m.inner.leaf.b = 55
+    assert w._widgets["inner"]._widgets["leaf"]._widgets["b"].value == 55

@@ -243,16 +243,24 @@ class PydanticModelEditor(CompositeWidget):
 
         if self.value is None:
             return
-        
+
         for name, widget in self._widgets.items():
             if event.obj == widget:
                 break
         else:
             return
 
+        # Nested editors already validated their model in place; just propagate
+        # the change signal up so parent watchers (e.g. json pane) refresh.
+        if isinstance(widget, PydanticModelEditor):
+            self._updating_field = True
+            self.param.trigger("value")
+            self._updating_field = False
+            return
+
         try:
-            self.class_.__pydantic_validator__.validate_assignment(self.value, 
-                                                                   name, 
+            self.class_.__pydantic_validator__.validate_assignment(self.value,
+                                                                   name,
                                                                    event.new)
         except ValidationError as e:
             self._updating = True
@@ -265,6 +273,11 @@ class PydanticModelEditor(CompositeWidget):
                 self._updating = False
             raise e
 
+        # Notify parent watchers that our model was mutated in-place.
+        self._updating_field = True
+        self.param.trigger("value")
+        self._updating_field = False
+
     def _update_widget(self, name, value):
         if self._updating:
             return
@@ -275,6 +288,11 @@ class PydanticModelEditor(CompositeWidget):
                 self._widgets[name].value = value
             finally:
                 self._updating = False
+
+            # Propagate to parent watchers (e.g. json pane) on model-side mutations.
+            self._updating_field = True
+            self.param.trigger("value")
+            self._updating_field = False
 
     def _update_widgets(self, cls, values):
         if self.value is None:
@@ -328,7 +346,8 @@ def add_setattr_callback(model_instance: BaseModel, callback: callable):
 
     class_ = model_instance.__class__
     if hasattr(class_, "__panel_callbacks__"):
-        class_.__panel_callbacks__ += (callback,)
+        if callback not in class_.__panel_callbacks__:
+            class_.__panel_callbacks__ += (callback,)
     else:
         class ModifiedModel(class_):
             __panel_callbacks__ = (callback,)
@@ -339,8 +358,8 @@ def add_setattr_callback(model_instance: BaseModel, callback: callable):
                     return
                 for cb in self.__class__.__panel_callbacks__:
                     cb(name, value)
-    
-    model_instance.__class__ = ModifiedModel
+
+        model_instance.__class__ = ModifiedModel
 
     return callback
 
