@@ -44,6 +44,75 @@ class Config:
     validate_assignment = True
 
 
+class ListWithCallback(list):
+    """A list subclass that fires a callback after any in-place mutation.
+
+    Used by PydanticModelEditor to detect list field mutations like .append()
+    and push them to the corresponding ItemListEditor widget.
+    """
+
+    def _init_callback(self, field_name: str, callback) -> None:
+        self._field_name = field_name
+        self._callback = callback
+
+    def _notify(self) -> None:
+        cb = getattr(self, "_callback", None)
+        fn = getattr(self, "_field_name", None)
+        if cb and fn is not None:
+            cb(fn, self)
+
+    def append(self, item):
+        super().append(item)
+        self._notify()
+
+    def insert(self, index, item):
+        super().insert(index, item)
+        self._notify()
+
+    def pop(self, index=-1):
+        result = super().pop(index)
+        self._notify()
+        return result
+
+    def remove(self, item):
+        super().remove(item)
+        self._notify()
+
+    def __setitem__(self, index, value):
+        super().__setitem__(index, value)
+        self._notify()
+
+    def __delitem__(self, index):
+        super().__delitem__(index)
+        self._notify()
+
+    def extend(self, items):
+        super().extend(items)
+        self._notify()
+
+    def clear(self):
+        super().clear()
+        self._notify()
+
+    def sort(self, *args, **kwargs):
+        super().sort(*args, **kwargs)
+        self._notify()
+
+    def reverse(self):
+        super().reverse()
+        self._notify()
+
+    def __iadd__(self, other):
+        super().__iadd__(other)
+        self._notify()
+        return self
+
+    def __imul__(self, n):
+        super().__imul__(n)
+        self._notify()
+        return self
+
+
 class pydantic_widgets(param.ParameterizedFunction):
     """Returns a dictionary of widgets to edit the fields
     of a pydantic model.
@@ -197,6 +266,10 @@ class PydanticModelEditor(CompositeWidget):
         if isinstance(self.value, self.class_):
             for k, v in self.items():
                 if k in self._widgets:
+                    # Always push a plain list to ItemListEditor to avoid
+                    # storing ListWithCallback inside the widget.
+                    if isinstance(v, ListWithCallback):
+                        v = list(v)
                     self._widgets[k].value = v
                 else:
                     self._recreate_widgets()
@@ -227,6 +300,11 @@ class PydanticModelEditor(CompositeWidget):
             # to the model attributes
             add_setattr_callback(self.value, self._update_widget)
 
+            # Wrap list-typed fields with ListWithCallback so that in-place
+            # mutations (append, pop, …) are forwarded to their ItemListEditor.
+            for k, widget in self._widgets.items():
+                if isinstance(widget, ItemListEditor):
+                    self._wrap_list_field(k)
 
             # If the previous value was a model
             # instance we unlink it
@@ -288,10 +366,49 @@ class PydanticModelEditor(CompositeWidget):
                 self._updating = False
             raise e
 
+        # validate_assignment replaces any ListWithCallback with a plain list;
+        # re-wrap so Python-side mutations stay observable.
+        if self.bidirectional and isinstance(widget, ItemListEditor):
+            self._wrap_list_field(name)
+
         # Notify parent watchers that our model was mutated in-place.
         self._updating_field = True
         self.param.trigger("value")
         self._updating_field = False
+
+    def _wrap_list_field(self, name: str) -> None:
+        """Replace a plain list field on self.value with a ListWithCallback.
+
+        Idempotent: skips if the field is already wrapped or is not a list.
+        Uses object.__setattr__ to bypass both Pydantic and our ModifiedModel
+        __setattr__ so no callbacks or validators fire during the wrap.
+        """
+        if self.value is None:
+            return
+        current = getattr(self.value, name, None)
+        if isinstance(current, list) and not isinstance(current, ListWithCallback):
+            wrapped = ListWithCallback(current)
+            wrapped._init_callback(name, self._update_list_widget)
+            object.__setattr__(self.value, name, wrapped)
+
+    def _update_list_widget(self, name: str, value) -> None:
+        """Called by ListWithCallback when a list field is mutated in-place.
+
+        Pushes a plain-list copy to the ItemListEditor so param detects a change
+        and rebuilds the widget tree. _updating=True blocks _validate_field from
+        calling validate_assignment (which would replace the ListWithCallback).
+        """
+        if self._updating:
+            return
+        if name in self._widgets:
+            self._updating = True
+            try:
+                self._widgets[name].value = list(value)
+            finally:
+                self._updating = False
+            self._updating_field = True
+            self.param.trigger("value")
+            self._updating_field = False
 
     def _update_widget(self, name, value):
         if self._updating:
@@ -303,6 +420,12 @@ class PydanticModelEditor(CompositeWidget):
                 self._widgets[name].value = value
             finally:
                 self._updating = False
+
+            # After a UI interaction, validate_assignment in _validate_field
+            # replaces the ListWithCallback with a new plain list inside Pydantic.
+            # Re-wrap so future Python-side mutations are still intercepted.
+            if self.bidirectional and isinstance(self._widgets.get(name), ItemListEditor):
+                self._wrap_list_field(name)
 
             # Propagate to parent watchers (e.g. json pane) on model-side mutations.
             self._updating_field = True

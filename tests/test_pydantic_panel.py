@@ -131,6 +131,44 @@ def test_remove_setattr_callback_restores_class():
     assert leaf.__class__ is LeafModel
 
 
+class NestedWithList(BaseModel):
+    model_list: list[LeafModel] = Field(default_factory=list)
+
+
+class OuterWithList(BaseModel):
+    nested: NestedWithList = NestedWithList()
+
+
+def test_bidirectional_list_append_from_python():
+    """Appending to a list field from Python updates the ItemListEditor."""
+    m = ModelWithList(items=[LeafModel(a=1)])
+    w = pydantic_panel.infer_widget(m, bidirectional=True)
+    list_w = w._widgets["items"]
+    assert len(list_w.value) == 1
+    m.items.append(LeafModel(a=2, b=3))
+    assert len(list_w.value) == 2
+    assert list_w.value[1].a == 2
+
+
+def test_bidirectional_list_pop_from_python():
+    """Popping from a list field from Python updates the ItemListEditor."""
+    m = ModelWithList(items=[LeafModel(a=1), LeafModel(a=2)])
+    w = pydantic_panel.infer_widget(m, bidirectional=True)
+    list_w = w._widgets["items"]
+    m.items.pop()
+    assert len(list_w.value) == 1
+
+
+def test_bidirectional_nested_list_append_from_python():
+    """Appending to a list field on a nested model updates the nested ItemListEditor."""
+    m = OuterWithList()
+    w = pydantic_panel.infer_widget(m, bidirectional=True)
+    m.nested.model_list.append(LeafModel(a=5))
+    list_w = w._widgets["nested"]._widgets["model_list"]
+    assert len(list_w.value) == 1
+    assert list_w.value[0].a == 5
+
+
 def test_list_of_models_empty():
     """An empty list[BaseModel] field creates an ItemListEditor with the correct item class."""
     m = ModelWithList()

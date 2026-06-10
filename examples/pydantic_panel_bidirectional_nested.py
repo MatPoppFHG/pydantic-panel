@@ -27,6 +27,6 @@ pn.extension()
 
 widget = pn.panel(model, bidirectional=True)
 
-layout = pn.Column(widget, widget.json)
+layout = pn.Row(widget, widget.json)
 
 pn.serve(layout, threaded=True)
