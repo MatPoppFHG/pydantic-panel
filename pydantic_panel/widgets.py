@@ -212,6 +212,9 @@ class PydanticModelEditor(CompositeWidget):
 
     def __init__(self, **params):
 
+        if "class_" not in params and isinstance(params.get("value"), BaseModel):
+            params["class_"] = type(params["value"])
+
         super().__init__(**params)
         self._recreate_widgets()
         self.param.watch(self._recreate_widgets, self._trigger_recreate)

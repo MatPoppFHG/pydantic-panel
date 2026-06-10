@@ -53,6 +53,14 @@ def test_panel_model_instance():
     assert w.value == SomeModel()
 
 
+def test_editor_infers_class_from_value():
+    """PydanticModelEditor should not require class_ when value is provided."""
+    m = SomeModel()
+    w = pydantic_panel.PydanticModelEditor(value=m)
+    assert w.class_ is SomeModel
+    assert len(w.widgets) > 0
+
+
 def test_set_data():
     m = SomeModel()
     w = pn.panel(m)

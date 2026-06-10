@@ -25,7 +25,11 @@ import panel as pn
 import pydantic_panel
 pn.extension()
 
-widget = pn.panel(model, bidirectional=True)
+#widget = pydantic_panel.infer_widget(model, bidirectional=True)
+# same as
+#widget = pn.panel(model, bidirectional=True)
+# same as
+widget = pydantic_panel.PydanticModelEditor(value = model, bidirectional=True)
 
 layout = pn.Row(widget, widget.json)
 
