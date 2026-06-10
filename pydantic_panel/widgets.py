@@ -20,7 +20,7 @@ from panel.widgets import CompositeWidget, Button
 from .dispatchers import infer_widget, clean_kwargs
 
 from pydantic_panel import infer_widget
-from typing import ClassVar, Type, List, Dict, Tuple, Any
+from typing import ClassVar, Type, List, Dict, Tuple, Any, get_origin, get_args
 
 # See https://github.com/holoviz/panel/issues/3736
 JSON_HACK_MARGIN = (10, 10)
@@ -93,7 +93,22 @@ class pydantic_widgets(param.ParameterizedFunction):
                 )
 
             except (NotFoundLookupError, NotImplementedError):
-                widget = infer_widget(value, field, name=field_name, **p.widget_kwargs)
+                origin = get_origin(field.annotation)
+                args = get_args(field.annotation)
+                if (
+                    origin is list
+                    and args
+                    and isinstance(args[0], type)
+                    and issubclass(args[0], BaseModel)
+                ):
+                    kw = clean_kwargs(ItemListEditor, {**p.widget_kwargs, "name": field_name})
+                    widget = ItemListEditor(
+                        value=value if value is not None else [],
+                        class_=args[0],
+                        **kw,
+                    )
+                else:
+                    widget = infer_widget(value, field, name=field_name, **p.widget_kwargs)
 
             if p.callback is not None:
                 widget.param.watch(p.callback, "value")
@@ -388,6 +403,7 @@ def remove_setattr_callback(model_instance: BaseModel, callback: callable):
         if hasattr(class_, "__panel_callbacks__"):
             continue
         model_instance.__class__ = class_
+        break
 
 
 class PydanticModelEditorCard(PydanticModelEditor):
@@ -673,6 +689,7 @@ class ItemDictEditor(BaseCollectionEditor):
 def infer_widget(value: BaseModel, field: Optional[FieldInfo] = None, **kwargs):
     if field is None:
         class_ = kwargs.pop("class_", type(value))
+        kwargs = clean_kwargs(PydanticModelEditor, kwargs)
         return PydanticModelEditor(value=value, class_=class_, **kwargs)
 
     class_ = kwargs.pop("class_", field.annotation)
@@ -684,9 +701,13 @@ def infer_widget(value: BaseModel, field: Optional[FieldInfo] = None, **kwargs):
 def infer_widget(value: list[BaseModel], field: Optional[FieldInfo] = None, **kwargs):
 
     if field is not None:
-        kwargs["class_"] = kwargs.pop("class_", field.annotation)
+        args = get_args(field.annotation)
+        item_class = args[0] if args else None
+        kwargs["class_"] = kwargs.pop("class_", item_class)
         if value is None:
             value = field.default
+    elif not kwargs.get("class_") and value:
+        kwargs.setdefault("class_", type(value[0]))
 
     if value is None:
         value = []
